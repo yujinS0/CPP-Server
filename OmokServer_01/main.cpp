@@ -6,7 +6,8 @@
 int main()
 {
 	Server server; // 서버의 인스턴스화
-	server.Init();	// Init 함수 호출 (내부적으로 네트워크의 init 함수)
+	server.Init();	// Init 함수 호출 (내부적으로 네트워크의 init 함수) 
+					// 초기화하면 listen 상태
 
 	std::thread runThread([&]() { // 워크 스레드 만들어서 진행 (이유? Run 함수에 써있음)
 		server.Run(); } // 서버의 Run 함수 호출 
