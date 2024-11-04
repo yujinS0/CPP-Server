@@ -119,7 +119,7 @@ public:
 		CreateClient(maxClientCount);
 
 		// [1]. 완료 포트(Completion Port) 생성
-		mIOCPHandle = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, NULL, MAX_WORKERTHREAD); // windows 제공하는 api (IOCP 생성
+		mIOCPHandle = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, NULL, MAX_WORKERTHREAD); // windows 제공하는 api (IOCP 생성)
 		// INVALID_HANDLE_VALUE : 새로운	완료포트 생성한다는 의미.
 		if (NULL == mIOCPHandle)
 		{
@@ -133,7 +133,7 @@ public:
 			return false;
 		}
 
-		bRet = CreateAccepterThread(); // Accepter 스레드 생성
+		bRet = CreateAccepterThread(); // Accepter 처리를 다루는 스레드 생성
 		if (false == bRet) {
 			return false;
 		}
@@ -143,7 +143,7 @@ public:
 	}
 
 	//생성되어있는 쓰레드를 파괴한다.
-	void DestroyThread()
+	void DestroyThread() // 종료 시 스레드는 다 파괴
 	{
 		mIsWorkerRun = false;
 		CloseHandle(mIOCPHandle);
@@ -168,11 +168,11 @@ public:
 
 
 private:
-	void CreateClient(const UINT32 maxClientCount)
+	void CreateClient(const UINT32 maxClientCount) // maxClientCount : 에코서버가 최대로 받을 수 있는 클라 수 
 	{
 		for (UINT32 i = 0; i < maxClientCount; ++i)
 		{
-			mClientInfos.emplace_back();
+			mClientInfos.emplace_back(); // 연결된 remote client를 가리키는 객체를 poll로 미리 만들어두고 있다.
 		}
 	}
 
@@ -183,7 +183,7 @@ private:
 		//WaingThread Queue에 대기 상태로 넣을 쓰레드들 생성 권장되는 개수 : (cpu개수 * 2) + 1 
 		for (int i = 0; i < MAX_WORKERTHREAD; i++)
 		{
-			mIOWorkerThreads.emplace_back([this](){ WokerThread(); });			
+			mIOWorkerThreads.emplace_back([this](){ WokerThread(); });	// 스레드 처리 !
 		}
 
 		printf("WokerThread 시작..\n");
@@ -191,9 +191,9 @@ private:
 	}
 	
 	//accept요청을 처리하는 쓰레드 생성
-	bool CreateAccepterThread()
+	bool CreateAccepterThread() // Accepter 스레드가 비동기 IO가 아니라 동기로 처리하고 있다. (추후 뒷 단계에서 비동기로 수정할 예정)
 	{
-		mAccepterThread = std::thread([this]() { AccepterThread(); });
+		mAccepterThread = std::thread([this]() { AccepterThread(); });	// 스레드 처리 !
 		
 		printf("AccepterThread 시작..\n");
 		return true;
@@ -214,7 +214,7 @@ private:
 	}
 	 
 	//CompletionPort객체와 소켓과 CompletionKey를 연결시키는 역할을 한다.
-	bool BindIOCompletionPort(stClientInfo* pClientInfo)
+	bool BindIOCompletionPort(stClientInfo* pClientInfo) // Bind IO
 	{
 		// [2]. I/O 객체와 완료 포트 연결
 				// 이제 생성한 완료 포트와 네트워크 소켓이나 파일 핸들 같은 I/O 객체를 연결합니다. 
@@ -297,9 +297,10 @@ private:
 		return true;
 	}
 
+	// 이 코드에서 가장 중요한 스레드 함수 부분 ! 
 	//Overlapped I/O작업에 대한 완료 통보를 받아 
 	//그에 해당하는 처리를 하는 함수
-	void WokerThread()
+	void WokerThread() // IOCP를 처리하는 워커 스레드
 	{
 		//CompletionKey를 받을 포인터 변수
 		stClientInfo* pClientInfo = NULL;
@@ -319,7 +320,8 @@ private:
 			//완료된 작업을 가져와 뒤 처리를 한다.
 			//그리고 PostQueuedCompletionStatus()함수에의해 사용자
 			//메세지가 도착되면 쓰레드를 종료한다.
-			//////////////////////////////////////////////////////
+			////////////////////////////////////////////////////// 완료(종료)할 때까지 GetQueuedCompletionStatus를 계속 호출하고 있음..
+			////////////////////////////////////////////////////// 따라서 비동기 완료가 된다면, 여기서 어떤 처리인지를 보고, 처리하고 있음.
 			bSuccess = GetQueuedCompletionStatus(mIOCPHandle,		// [4]. 작업자 스레드 대기 및 처리
 				&dwIoSize,					// 실제로 전송된 바이트
 				(PULONG_PTR)&pClientInfo,		// CompletionKey
@@ -350,7 +352,7 @@ private:
 			stOverlappedEx* pOverlappedEx = (stOverlappedEx*)lpOverlapped;
 
 			//Overlapped I/O Recv작업 결과 뒤 처리
-			if (IOOperation::RECV == pOverlappedEx->m_eOperation)
+			if (IOOperation::RECV == pOverlappedEx->m_eOperation) // 
 			{
 				pOverlappedEx->m_szBuf[dwIoSize] = NULL;
 				printf("[수신] bytes : %d , msg : %s\n", dwIoSize, pOverlappedEx->m_szBuf);
@@ -389,7 +391,7 @@ private:
 			}
 
 			//클라이언트 접속 요청이 들어올 때까지 기다린다.
-			pClientInfo->m_socketClient = accept(mListenSocket,	(SOCKADDR*)&stClientAddr, &nAddrLen);
+			pClientInfo->m_socketClient = accept(mListenSocket,	(SOCKADDR*)&stClientAddr, &nAddrLen); // 연결이 발생하면 accept 호출
 			if (INVALID_SOCKET == pClientInfo->m_socketClient)
 			{
 				continue;
