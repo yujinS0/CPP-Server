@@ -194,8 +194,8 @@ private:
 		DWORD dwRecvNumBytes = 0;
 		
 		//Overlapped I/O을 위해 각 정보를 셋팅해 준다.
-		pClientInfo->m_stRecvOverlappedEx.m_wsaBuf.len = MAX_SOCKBUF;
-		pClientInfo->m_stRecvOverlappedEx.m_wsaBuf.buf = pClientInfo->mRecvBuf;
+		pClientInfo->m_stRecvOverlappedEx.m_wsaBuf.len = MAX_SOCKBUF;           // [설명 주석] 1단계와 바뀐 부분
+		pClientInfo->m_stRecvOverlappedEx.m_wsaBuf.buf = pClientInfo->mRecvBuf; // 클라이언트에 recvdub를 옮겼기 떄문
 		pClientInfo->m_stRecvOverlappedEx.m_eOperation = IOOperation::RECV;
 
 		int nRet = WSARecv(pClientInfo->m_socketClient,
@@ -217,6 +217,9 @@ private:
 	}
 
 	//WSASend Overlapped I/O작업을 시킨다.
+	// 비동기 IO는 내가 send를 했다고 send가 된 것이 아니다.
+	// 동기와 다르게 예약 개념이다. send를 예약하고 뒤에 진짜 send를 수행하고 IOCP가 알려주는 역할.
+	// 따라서 진짜 send 하기 전까지 client info에 있는 버퍼에 보낼 데이터를 보관하고, m_stSendOverlappedEx에 연결시키고 있다.
 	bool SendMsg(stClientInfo* pClientInfo, char* pMsg, int nLen)
 	{
 		DWORD dwRecvNumBytes = 0;
@@ -227,7 +230,7 @@ private:
 
 
 		//Overlapped I/O을 위해 각 정보를 셋팅해 준다.
-		pClientInfo->m_stSendOverlappedEx.m_wsaBuf.len = nLen;
+		pClientInfo->m_stSendOverlappedEx.m_wsaBuf.len = nLen;                  // m_stSendOverlappedEx
 		pClientInfo->m_stSendOverlappedEx.m_wsaBuf.buf = pClientInfo->mSendBuf;
 		pClientInfo->m_stSendOverlappedEx.m_eOperation = IOOperation::SEND;
 
