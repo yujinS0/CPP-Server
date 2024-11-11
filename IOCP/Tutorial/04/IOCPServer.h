@@ -121,10 +121,10 @@ public:
 		}		
 	}
 
-	bool SendMsg(const UINT32 sessionIndex_, const UINT32 dataSize_, char* pData)
-	{
-		auto pClient = GetClientInfo(sessionIndex_);
-		return pClient->SendMsg(dataSize_, pData);
+	bool SendMsg(const UINT32 sessionIndex_, const UINT32 dataSize_, char* pData) 
+	{GetClientInfo
+		auto pClient = GetClientInfo(sessionIndex_); // 누가 보냈는지 GetClientInfo로 알아온다.
+		return pClient->SendMsg(dataSize_, pData); // 실질적으로 I/O Send를 하는 부분은 이곳이다.
 	}
 	
 	
@@ -186,7 +186,7 @@ private:
 		return true;
 	}
 		  		
-	//Overlapped I/O작업에 대한 완료 통보를 받아 그에 해당하는 처리를 하는 함수
+	// Overlapped I/O작업에 대한 완료 통보를 받아 그에 해당하는 처리를 하는 함수 (네트워크 IO 처리를 전담하는 스레드)
 	void WokerThread()
 	{
 		stClientInfo* pClientInfo = nullptr;
@@ -197,10 +197,10 @@ private:
 		while (mIsWorkerRun)
 		{
 			bSuccess = GetQueuedCompletionStatus(mIOCPHandle,
-				&dwIoSize,					// 실제로 전송된 바이트
+				&dwIoSize,						// 실제로 전송된 바이트
 				(PULONG_PTR)&pClientInfo,		// CompletionKey
-				&lpOverlapped,				// Overlapped IO 객체
-				INFINITE);					// 대기할 시간
+				&lpOverlapped,					// Overlapped IO 객체
+				INFINITE);						// 대기할 시간 무한대 
 
 
 			if (TRUE == bSuccess && 0 == dwIoSize && NULL == lpOverlapped)
@@ -233,9 +233,9 @@ private:
 				pClientInfo->BindRecv();
 			}
 			//Overlapped I/O Send작업 결과 뒤 처리
-			else if (IOOperation::SEND == pOverlappedEx->m_eOperation)
+			else if (IOOperation::SEND == pOverlappedEx->m_eOperation) // Send 완료가 되었을 때. 
 			{
-				delete[] pOverlappedEx->m_wsaBuf.buf;
+				delete[] pOverlappedEx->m_wsaBuf.buf;   // 3단계(IOCPServer.h)와 달라진 점. 동적 할당한 메모리를 Delete 해제해준다.
 				delete pOverlappedEx;
 				pClientInfo->SendCompleted(dwIoSize);
 			}

@@ -4,8 +4,9 @@
 #include <stdio.h>
 
 
-//클라이언트 정보를 담기위한 구조체
-class stClientInfo
+// 클라이언트 정보를 담기위한 구조체
+// 연결된 클라이언트 세션 정보를 담는.. ClientInfo 클래스
+class stClientInfo // 이름 수정
 {
 public:
 	stClientInfo()
@@ -107,17 +108,18 @@ public:
 	}
 
 	// 1개의 스레드에서만 호출해야 한다!
-	bool SendMsg(const UINT32 dataSize_, char* pMsg_)
+	bool SendMsg(const UINT32 dataSize_, char* pMsg_) // 실질적인 I/O Send 작업
 	{
 		auto sendOverlappedEx = new stOverlappedEx;
 		ZeroMemory(sendOverlappedEx, sizeof(stOverlappedEx));
 		sendOverlappedEx->m_wsaBuf.len = dataSize_;
-		sendOverlappedEx->m_wsaBuf.buf = new char[dataSize_];
+		sendOverlappedEx->m_wsaBuf.buf = new char[dataSize_];			// 3단계(IOCPServer.h)와 달라진 점. 사이즈를 동적 할당해서 받아와서 넣어준다. -> 이후에 delete[]로 해제해준다.
+																		// 앞의 과정이 완료되기 전에 또 Send를 진행해도 데이터가 겹쳐지지 않는다!! 안전함.	
 		CopyMemory(sendOverlappedEx->m_wsaBuf.buf, pMsg_, dataSize_);
 		sendOverlappedEx->m_eOperation = IOOperation::SEND;
 		
 		DWORD dwRecvNumBytes = 0;
-		int nRet = WSASend(mSock,
+		int nRet = WSASend(mSock,			// 비동기 IO 처리
 			&(sendOverlappedEx->m_wsaBuf),
 			1,
 			&dwRecvNumBytes,
