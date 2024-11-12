@@ -11,8 +11,11 @@
     <ClInclude Include="Define.h" />
     <ClInclude Include="IOCPServer.h" />
     <ClInclude Include="EchoServer.h" />
+    <ClInclude Include="ClientInfo.h" />
+    <ClInclude Include="Packet.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="EchoCodeServer.h" />
   </ItemGroup>
 </Project>
