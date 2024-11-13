@@ -139,9 +139,10 @@ private:
 	{
 		for (UINT32 i = 0; i < maxClientCount; ++i)
 		{
-			mClientInfos.emplace_back();
+			auto client = new stClientInfo();
+			client->Init(i);
 
-			mClientInfos[i].Init(i);
+			mClientInfos.push_back(client);
 		}
 	}
 
@@ -183,11 +184,11 @@ private:
 	// 사용하지 않는 클라이언트 정보 구조체 반환
 	stClientInfo* GetEmptyClientInfo()
 	{
-		for (auto& client : mClientInfos)
+		for (auto client : mClientInfos)
 		{
-			if (client.IsConnectd() == false)
+			if (client->IsConnectd() == false)
 			{
-				return &client;
+				return client;
 			}
 		}
 
@@ -196,7 +197,7 @@ private:
 
 	stClientInfo* GetClientInfo(const UINT32 sessionIndex)
 	{
-		return &mClientInfos[sessionIndex];
+		return mClientInfos[sessionIndex];
 	}
 
 
@@ -337,7 +338,7 @@ private:
 
 
 	// 클라이언트 정보 저장 구조체
-	std::vector<stClientInfo> mClientInfos;
+	std::vector<stClientInfo*> mClientInfos;
 
 	// 클라이언트의 접속을 받기위한 리슨 소켓
 	SOCKET mListenSocket = INVALID_SOCKET;
