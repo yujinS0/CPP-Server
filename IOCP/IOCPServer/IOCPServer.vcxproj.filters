@@ -7,7 +7,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="IOCompletionPort.h" />
     <ClInclude Include="Define.h" />
     <ClInclude Include="IOCPServer.h" />
     <ClInclude Include="EchoServer.h" />
@@ -16,6 +15,5 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="EchoCodeServer.h" />
   </ItemGroup>
 </Project>

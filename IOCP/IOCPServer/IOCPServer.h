@@ -29,7 +29,7 @@ public:
 			return false;
 		}
 
-		// 연결지향형 TCP , Overlapped I/O 소켓을 생성
+		// 연결지향형 TCP, Overlapped I/O 소켓을 생성
 		mListenSocket = WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, NULL, WSA_FLAG_OVERLAPPED);
 
 		if (INVALID_SOCKET == mListenSocket)
@@ -47,8 +47,9 @@ public:
 	{
 		SOCKADDR_IN stServerAddr;
 		stServerAddr.sin_family = AF_INET;
-		stServerAddr.sin_port = htons(nBindPort); // 서버 포트 설정 
-		stServerAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+		stServerAddr.sin_port = htons(nBindPort);			// 서버 포트 설정 
+																// 만약, 한 아이피에서만 접속을 받는다면, inet_addr함수를 통해 해당 주소 넣기
+		stServerAddr.sin_addr.s_addr = htonl(INADDR_ANY);	// 어떤 IP에서든 접속을 받는다.
 
 		// 위에서 지정한 서버 주소 정보와 cIOCOmpletionPort 소켓을 연결
 		int nRet = bind(mListenSocket, (SOCKADDR*)&stServerAddr, sizeof(SOCKADDR_IN));
@@ -75,6 +76,7 @@ public:
 	{
 		CreateClient(maxClientCount);
 
+		// CompletionPort 객체 생성 요청
 		mIOCPHandle = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, NULL, MAX_WORKERTHREAD);
 		if (NULL == mIOCPHandle)
 		{
@@ -143,9 +145,14 @@ private:
 		}
 	}
 
+	// WaitingThread Queue에서 대기할 스레드 생성
 	bool CreateWokerThread()
 	{
-		unsigned int uiThreadId = 0;
+		//unsigned int uiThreadId = 0;
+		mIsWorkerRun = true;
+
+		// WaingThread Queue에 대기 상태로 넣을 스레드의 생성 
+														// 권장되는 개수 : (cpu 수 * 2) + 1 
 		for (int i = 0; i < MAX_WORKERTHREAD; i++)
 		{
 			mIOWorkerThreads.emplace_back([this]() { WokerThread(); });
@@ -155,13 +162,22 @@ private:
 		return true;
 	}
 
-	// accept 요청을 처리하는 쓰레드 생성
+	// accept 요청을 처리하는 스레드 생성
 	bool CreateAccepterThread()
 	{
+		mIsAccepterRun = true;
 		mAccepterThread = std::thread([this]() { AccepterThread(); });
 
 		printf("AccepterThread 시작..\n");
 		return true;
+	}
+
+	// send 처리하는 스레드 생성
+	void CreateSendThread()
+	{
+		mIsSenderRun = true;
+		mSendThread = std::thread([this]() { SendThread(); });
+		printf("SendThread 시작..\n");
 	}
 
 	// 사용하지 않는 클라이언트 정보 구조체 반환
@@ -183,90 +199,15 @@ private:
 		return &mClientInfos[sessionIndex];
 	}
 
-	/*bool BindIOCompletionPort(stClientInfo* pClientInfo)
-	{
-		auto hIOCP = CreateIoCompletionPort((HANDLE)pClientInfo->m_socketClient
-			, mIOCPHandle
-			, (ULONG_PTR)(pClientInfo), 0);
-
-		if (NULL == hIOCP || mIOCPHandle != hIOCP)
-		{
-			printf("[에러] CreateIoCompletionPort()함수 실패: %d\n", GetLastError());
-			return false;
-		}
-
-		return true;
-	}*/
-
-	//WSARecv Overlapped I/O 작업을 시킨다.
-	//bool BindRecv(stClientInfo* pClientInfo)
-	//{
-	//	DWORD dwFlag = 0;
-	//	DWORD dwRecvNumBytes = 0;
-
-	//	//Overlapped I/O을 위해 각 정보를 셋팅해 준다.
-	//	pClientInfo->m_stRecvOverlappedEx.m_wsaBuf.len = MAX_SOCKBUF;
-	//	pClientInfo->m_stRecvOverlappedEx.m_wsaBuf.buf = pClientInfo->mRecvBuf;
-	//	pClientInfo->m_stRecvOverlappedEx.m_eOperation = IOOperation::RECV;
-
-	//	int nRet = WSARecv(pClientInfo->m_socketClient,
-	//		&(pClientInfo->m_stRecvOverlappedEx.m_wsaBuf),
-	//		1,
-	//		&dwRecvNumBytes,
-	//		&dwFlag,
-	//		(LPWSAOVERLAPPED) & (pClientInfo->m_stRecvOverlappedEx),
-	//		NULL);
-
-	//	//socket_error이면 client socket이 끊어진걸로 처리한다.
-	//	if (nRet == SOCKET_ERROR && (WSAGetLastError() != ERROR_IO_PENDING))
-	//	{
-	//		printf("[에러] WSARecv()함수 실패 : %d\n", WSAGetLastError());
-	//		return false;
-	//	}
-
-	//	return true;
-	//}
-
-	//WSASend Overlapped I/O작업을 시킨다.
-	//bool SendMsg(stClientInfo* pClientInfo, char* pMsg, int nLen)
-	//{
-	//	DWORD dwRecvNumBytes = 0;
-
-	//	//전송될 메세지를 복사
-	//	CopyMemory(pClientInfo->mSendBuf, pMsg, nLen);
-	//	pClientInfo->mSendBuf[nLen] = '\0';
-
-
-	//	//Overlapped I/O을 위해 각 정보를 셋팅해 준다.
-	//	pClientInfo->m_stSendOverlappedEx.m_wsaBuf.len = nLen;
-	//	pClientInfo->m_stSendOverlappedEx.m_wsaBuf.buf = pClientInfo->mSendBuf;
-	//	pClientInfo->m_stSendOverlappedEx.m_eOperation = IOOperation::SEND;
-
-	//	int nRet = WSASend(pClientInfo->m_socketClient,
-	//		&(pClientInfo->m_stSendOverlappedEx.m_wsaBuf),
-	//		1,
-	//		&dwRecvNumBytes,
-	//		0,
-	//		(LPWSAOVERLAPPED) & (pClientInfo->m_stSendOverlappedEx),
-	//		NULL);
-
-	//	//socket_error이면 client socket이 끊어진걸로 처리한다.
-	//	if (nRet == SOCKET_ERROR && (WSAGetLastError() != ERROR_IO_PENDING))
-	//	{
-	//		printf("[에러] WSASend()함수 실패 : %d\n", WSAGetLastError());
-	//		return false;
-	//	}
-	//	return true;
-	//}
 
 	// Overlapped I/O작업에 대한 완료 통보를 받아 그에 해당하는 처리를 하는 함수 
 	// (네트워크 IO 처리를 전담하는 스레드)
 	void WokerThread()
 	{
-		stClientInfo* pClientInfo = nullptr;
-		BOOL bSuccess = TRUE;
-		DWORD dwIoSize = 0;
-		LPOVERLAPPED lpOverlapped = NULL;
+		stClientInfo* pClientInfo = nullptr; // CompletionKey 받을 포인터 변수
+		BOOL bSuccess = TRUE; // 함수 호출 성공 여부
+		DWORD dwIoSize = 0; // 전송된 데이터 크기
+		LPOVERLAPPED lpOverlapped = NULL; // IO 작업을 위해 요청한 Overlapped 구조체를 받을 포인터
 
 		while (mIsWorkerRun)
 		{
@@ -299,21 +240,23 @@ private:
 
 			auto pOverlappedEx = (stOverlappedEx*)lpOverlapped;
 
-			// Overlapped I/O Recv작업 결과 뒤 처리
+			// Overlapped I/O Recv 작업 결과 뒤 처리
 			if (IOOperation::RECV == pOverlappedEx->m_eOperation)
 			{
 				OnReceive(pClientInfo->GetIndex(), dwIoSize, pClientInfo->RecvBuffer());
 
 				pClientInfo->BindRecv();
 			}
-			// Overlapped I/O Send작업 결과 뒤 처리
+			// Overlapped I/O Send 작업 결과 뒤 처리
 			else if (IOOperation::SEND == pOverlappedEx->m_eOperation) // Send 완료가 되었을 때. 
 			{
-				delete[] pOverlappedEx->m_wsaBuf.buf;  // 3단계(IOCPServer.h)와 달라진 점. 동적 할당한 메모리를 Delete 해제해준다.
-				delete pOverlappedEx;
-				pClientInfo->SendCompleted(dwIoSize);
+				pClientInfo->SendCompleted(dwIoSize); // Send 작업 완료시 호출되는 함수
+
+				//delete[] pOverlappedEx->m_wsaBuf.buf;  // 3단계(IOCPServer.h)와 달라진 점. 동적 할당한 메모리를 Delete 해제해준다.
+				//delete pOverlappedEx;
+				//pClientInfo->SendCompleted(dwIoSize);
 			}
-			//예외 상황
+			// 예외 상황
 			else
 			{
 				printf("Client Index(%d)에서 예외상황\n", pClientInfo->GetIndex());
@@ -324,7 +267,7 @@ private:
 	// 사용자의 접속을 받는 스레드 
 	void AccepterThread()
 	{
-		SOCKADDR_IN		stClientAddr;
+		SOCKADDR_IN	stClientAddr;
 		int nAddrLen = sizeof(SOCKADDR_IN);
 
 		while (mIsAccepterRun)
@@ -361,6 +304,26 @@ private:
 		}
 	}
 
+	// Send 처리하는 스레드
+	void SendThread()
+	{
+		while (mIsSenderRun)
+		{
+			for (auto client : mClientInfos)
+			{
+				if (client->IsConnectd() == false)
+				{
+					continue;
+				}
+
+				client->SendIO();
+			}
+
+			std::this_thread::sleep_for(std::chrono::milliseconds(8));
+		}
+	}
+
+
 	// 소켓의 연결을 종료 시킨다.
 	void CloseSocket(stClientInfo* pClientInfo, bool bIsForce = false)
 	{
@@ -388,12 +351,18 @@ private:
 	// Accept 스레드
 	std::thread	mAccepterThread;
 
+	std::thread	mSendThread;
+
+
 	// CompletionPort 객체 핸들
 	HANDLE mIOCPHandle = INVALID_HANDLE_VALUE;
 
-	// 작업 쓰레드 동작 플래그
+	// 작업 스레드 동작 플래그
 	bool mIsWorkerRun = true;
 
-	// 접속 쓰레드 동작 플래그
+	// 접속 스레드 동작 플래그
 	bool mIsAccepterRun = true;
+
+	// Send 스레드 동작 플래그
+	bool mIsSenderRun = false;
 };
