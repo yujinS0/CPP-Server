@@ -1,15 +1,19 @@
 #pragma once
+#pragma comment(lib, "Mswsock.lib")
 
 #include <winsock2.h>
 #include <Ws2tcpip.h>
+#include <mswsock.h>
 
 const UINT32 MAX_SOCKBUF = 256;			// 패킷 크기
 const UINT32 MAX_WORKERTHREAD = 4;		// 쓰레드 풀에 넣을 쓰레드 수
 const UINT32 MAX_SOCK_SENDBUF = 4096;	// 소켓 버퍼의 크기
+const UINT64 RE_USE_SESSION_WAIT_TIMESEC = 3;
 
 
 enum class IOOperation
 {
+	ACCEPT,
 	RECV,
 	SEND
 };
@@ -18,9 +22,10 @@ enum class IOOperation
 struct stOverlappedEx
 {
 	WSAOVERLAPPED m_wsaOverlapped;		// Overlapped I/O구조체
-	SOCKET m_socketClient;				// 클라이언트 소켓
 	WSABUF m_wsaBuf;					// Overlapped I/O작업 버퍼
 	IOOperation m_eOperation;			// 작업 동작 종류
+	SOCKET m_socketClient;				// 클라이언트 소켓
+	UINT32 SessionIndex = 0;
 };
 
 //// 클라이언트 정보를 담는 구조체 -> ClientInfo.h로 분리

@@ -12,24 +12,27 @@ public:
 	stClientInfo()
 	{
 		ZeroMemory(&mRecvOverlappedEx, sizeof(stOverlappedEx));
-		ZeroMemory(&mSendOverlappedEx, sizeof(stOverlappedEx));
+		ZeroMemory(&mSendOverlappedEx, sizeof(stOverlappedEx)); //
 		mSock = INVALID_SOCKET;
 	}
 
 	~stClientInfo() = default;
 
-	void Init(const UINT32 index)
+	void Init(const UINT32 index, HANDLE iocpHandle_)
 	{
 		mIndex = index;
+		mIOCPHandle = iocpHandle_;
 	}
 
 	UINT32 GetIndex() { return mIndex; }
 
-	bool IsConnectd() { return mSock != INVALID_SOCKET; }
+	bool IsConnectd() { return mSock != INVALID_SOCKET; } // mIsConnect == 1;
 
 	SOCKET GetSock() { return mSock; }
 
 	char* RecvBuffer() { return mRecvBuf; }
+
+	UINT64 GetLatestClosedTimeSec() { return mLatestClosedTimeSec; }
 
 
 	bool OnConnect(HANDLE iocpHandle_, SOCKET socket_)
@@ -56,9 +59,12 @@ public:
 			stLinger.l_onoff = 1;
 		}
 
-		shutdown(mSock, SD_BOTH);
+		shutdown(mSock, SD_BOTH); // socketClose 소켓의 데이터 송수신을 모두 중단
 
 		setsockopt(mSock, SOL_SOCKET, SO_LINGER, (char*)&stLinger, sizeof(stLinger));
+
+		//mIsConnect = 0;
+		mLatestClosedTimeSec = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 
 		closesocket(mSock);
 		mSock = INVALID_SOCKET;
@@ -69,6 +75,60 @@ public:
 		mSendPos = 0;
 		mIsSending = false;
 	}
+
+	bool PostAccept(SOCKET listenSock_, const UINT64 curTimeSec_)
+	{
+		printf_s("PostAccept. client Index: %d\n", GetIndex());
+
+		mLatestClosedTimeSec = UINT32_MAX;
+
+		mSock = WSASocket(AF_INET, SOCK_STREAM, IPPROTO_IP, NULL, 0, WSA_FLAG_OVERLAPPED);
+		if (mSock == INVALID_SOCKET)
+		{
+			printf_s("client Socket WSASocket Error : %d\n", GetLastError());
+			return false;
+		}
+
+		ZeroMemory(&mAcceptContext, sizeof(stOverlappedEx));
+
+		DWORD bytes = 0;
+		DWORD flags = 0;
+		mAcceptContext.m_wsaBuf.len = 0;
+		mAcceptContext.m_wsaBuf.buf = nullptr;
+		mAcceptContext.m_eOperation = IOOperation::ACCEPT;
+		mAcceptContext.SessionIndex = mIndex;
+
+		if (AcceptEx(listenSock_, mSock, mAcceptBuf, 0, sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, &bytes, (LPWSAOVERLAPPED) & (mAcceptContext)) == FALSE)
+		{
+			if (WSAGetLastError() != WSA_IO_PENDING)
+			{
+				printf_s("AcceptEx Error : %d\n", GetLastError());
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	bool AcceptCompletion()
+	{
+		printf_s("AcceptCompletion : SessionIndex(%d)\n", mIndex);
+
+		if (OnConnect(mIOCPHandle, mSock) == false)
+		{
+			return false;
+		}
+
+		SOCKADDR_IN		stClientAddr;
+		int nAddrLen = sizeof(SOCKADDR_IN);
+		char clientIP[32] = { 0, };
+		inet_ntop(AF_INET, &(stClientAddr.sin_addr), clientIP, 32 - 1);
+		printf("클라이언트 접속 : IP(%s) SOCKET(%d)\n", clientIP, (int)mSock);
+
+		return true;
+	}
+
+
 
 	bool BindIOCompletionPort(HANDLE iocpHandle_)
 	{
@@ -105,38 +165,7 @@ public:
 		return true;
 	}
 
-	//// 1개의 스레드에서만 호출해야 함!
-	//bool SendMsg(const UINT32 dataSize_, char* pMsg_) // 실질적인 I/O Send 작업
-	//{
-	//	auto sendOverlappedEx = new stOverlappedEx;
-	//	ZeroMemory(sendOverlappedEx, sizeof(stOverlappedEx));
-	//	sendOverlappedEx->m_wsaBuf.len = dataSize_;
-	//	sendOverlappedEx->m_wsaBuf.buf = new char[dataSize_];			// 3단계(IOCPServer.h)와 달라진 점. 사이즈를 동적 할당해서 받아와서 넣어준다. -> 이후에 delete[]로 해제해준다.
-	//	// 앞의 과정이 완료되기 전에 또 Send를 진행해도 데이터가 겹쳐지지 않는다!! 안전함.	
-	//	CopyMemory(sendOverlappedEx->m_wsaBuf.buf, pMsg_, dataSize_);
-	//	sendOverlappedEx->m_eOperation = IOOperation::SEND;
-
-	//	DWORD dwRecvNumBytes = 0;
-	//	int nRet = WSASend(mSock,			// 비동기 IO 처리
-	//		&(sendOverlappedEx->m_wsaBuf),
-	//		1,
-	//		&dwRecvNumBytes,
-	//		0,
-	//		(LPWSAOVERLAPPED)sendOverlappedEx,
-	//		NULL);
-
-	//	//socket_error이면 client socket이 끊어진걸로 처리한다.
-	//	if (nRet == SOCKET_ERROR && (WSAGetLastError() != ERROR_IO_PENDING))
-	//	{
-	//		printf("[에러] WSASend()함수 실패 : %d\n", WSAGetLastError());
-	//		return false;
-	//	}
-
-	//	return true;
-	//}
-	// 
-	// -----------------------------------------------
-	// 위 과정을 아래와 같이 수정 (1-send 구현을 위해)
+	// 1-send 구현
 	// 1개의 스레드에서만 호출해야 함!
 	bool SendMsg(const UINT32 dataSize_, char* pMsg_)
 	{
@@ -203,14 +232,23 @@ public:
 
 private:
 	INT32 mIndex = 0;
+
+	HANDLE mIOCPHandle = INVALID_HANDLE_VALUE;
+
 	SOCKET mSock;						// Cliet와 연결되는 소켓
 	stOverlappedEx mRecvOverlappedEx;	// RECV Overlapped I/O작업을 위한 변수
 	stOverlappedEx mSendOverlappedEx;	//SEND Overlapped I/O작업을 위한 변수
+
+	//INT64 mIsConnect = 0;
+	UINT64 mLatestClosedTimeSec = 0;
 
 	// 데이터 버퍼	
 	char mRecvBuf[MAX_SOCKBUF];	
 	char mSendBuf[MAX_SOCK_SENDBUF];	
 	char mSendingBuf[MAX_SOCK_SENDBUF];
+
+	stOverlappedEx	mAcceptContext;
+	char mAcceptBuf[64];
 
 	std::mutex mSendLock;
 	bool mIsSending = false;
